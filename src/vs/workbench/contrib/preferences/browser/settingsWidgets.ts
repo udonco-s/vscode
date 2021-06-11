@@ -8,10 +8,12 @@ import * as DOM from 'vs/base/browser/dom';
 import { StandardKeyboardEvent } from 'vs/base/browser/keyboardEvent';
 import { ActionBar } from 'vs/base/browser/ui/actionbar/actionbar';
 import { Button } from 'vs/base/browser/ui/button/button';
+import { Checkbox } from 'vs/base/browser/ui/checkbox/checkbox';
 import { InputBox } from 'vs/base/browser/ui/inputbox/inputBox';
 import { SelectBox } from 'vs/base/browser/ui/selectBox/selectBox';
 import { IAction } from 'vs/base/common/actions';
 import { disposableTimeout } from 'vs/base/common/async';
+import { Codicon } from 'vs/base/common/codicons';
 import { Color, RGBA } from 'vs/base/common/color';
 import { Emitter, Event } from 'vs/base/common/event';
 import { KeyCode } from 'vs/base/common/keyCodes';
@@ -179,10 +181,12 @@ export class ListSettingListModel<TDataItem extends object> {
 	private _editKey: EditKey | null = null;
 	private _selectedIdx: number | null = null;
 	private _newDataItem: TDataItem;
+	private _editOnly: boolean = false;
 
 	get items(): IListViewItem<TDataItem>[] {
 		const items = this._dataItems.map((item, i) => {
-			const editing = typeof this._editKey === 'number' && this._editKey === i;
+			const editing = this._editOnly ||
+				(typeof this._editKey === 'number' && this._editKey === i);
 			return {
 				...item,
 				editing,
@@ -207,6 +211,10 @@ export class ListSettingListModel<TDataItem extends object> {
 
 	setEditKey(key: EditKey): void {
 		this._editKey = key;
+	}
+
+	setEditOnly(editOnly: boolean): void {
+		this._editOnly = editOnly;
 	}
 
 	setValue(listData: TDataItem[]): void {
@@ -793,6 +801,7 @@ interface IObjectBoolData {
 
 type ObjectKey = IObjectStringData | IObjectEnumData;
 export type ObjectValue = IObjectStringData | IObjectEnumData | IObjectBoolData;
+type ObjectWidget = InputBox | SelectBox | Checkbox;
 
 export interface IObjectDataItem {
 	key: ObjectKey;
@@ -939,7 +948,7 @@ export class ObjectSettingWidget extends AbstractListSettingWidget<IObjectDataIt
 			changedItem.value = value;
 		};
 
-		let keyWidget: InputBox | SelectBox | undefined;
+		let keyWidget: ObjectWidget | undefined;
 		let keyElement: HTMLElement;
 
 		if (this.showAddButton) {
@@ -967,7 +976,7 @@ export class ObjectSettingWidget extends AbstractListSettingWidget<IObjectDataIt
 			keyElement.textContent = item.key.data;
 		}
 
-		let valueWidget: InputBox | SelectBox;
+		let valueWidget: ObjectWidget;
 		const valueContainer = $('.setting-list-object-value-container');
 
 		const renderLatestValue = () => {
@@ -1148,6 +1157,189 @@ export class ObjectSettingWidget extends AbstractListSettingWidget<IObjectDataIt
 		return isDefined(enumDescription)
 			? `${enumDescription}. Currently set to ${item.value.data}.`
 			: localize('objectPairHintLabel', "The property `{0}` is set to `{1}`.", item.key.data, item.value.data);
+	}
+
+	protected getLocalizedStrings() {
+		return {
+			deleteActionTooltip: localize('removeItem', "Remove Item"),
+			resetActionTooltip: localize('resetItem', "Reset Item"),
+			editActionTooltip: localize('editItem', "Edit Item"),
+			addButtonLabel: localize('addItem', "Add Item"),
+			keyHeaderText: localize('objectKeyHeader', "Item"),
+			valueHeaderText: localize('objectValueHeader', "Value"),
+		};
+	}
+}
+
+interface IBoolObjectSetValueOptions {
+	settingKey: string;
+}
+export interface IBoolObjectDataItem {
+	key: string;
+	value: boolean;
+}
+
+export class BoolObjectSettingWidget extends AbstractListSettingWidget<IBoolObjectDataItem> {
+	private currentSettingKey: string = '';
+
+	override setValue(listData: IBoolObjectDataItem[], options?: IBoolObjectSetValueOptions): void {
+		if (isDefined(options) && options.settingKey !== this.currentSettingKey) {
+			this.model.setEditKey('none');
+			this.model.select(null);
+			this.model.setEditOnly(true);
+			this.currentSettingKey = options.settingKey;
+		}
+
+		super.setValue(listData);
+	}
+
+	isItemNew(item: IBoolObjectDataItem): boolean {
+		return !item.key && !item.value;
+	}
+
+	protected getEmptyItem(): IBoolObjectDataItem {
+		return {
+			key: '',
+			value: false
+		};
+	}
+
+	protected getContainerClasses() {
+		return ['setting-list-object-widget'];
+	}
+
+	protected getActionsForItem(item: IBoolObjectDataItem, idx: number): IAction[] {
+		const actions = [
+			{
+				class: ThemeIcon.asClassName(settingsEditIcon),
+				enabled: true,
+				id: 'workbench.action.editListItem',
+				tooltip: this.getLocalizedStrings().editActionTooltip,
+				run: () => this.editSetting(idx)
+			},
+		] as IAction[];
+
+		actions.push({
+			class: ThemeIcon.asClassName(settingsDiscardIcon),
+			enabled: true,
+			id: 'workbench.action.resetListItem',
+			tooltip: this.getLocalizedStrings().resetActionTooltip,
+			run: () => this._onDidChangeList.fire({ originalItem: item, item: undefined, targetIndex: idx })
+		} as IAction);
+
+		return actions;
+	}
+
+	// protected override renderHeader() {
+	// const header = $('.setting-list-row-header');
+	// const keyHeader = DOM.append(header, $('.setting-list-object-key'));
+	// const valueHeader = DOM.append(header, $('.setting-list-object-value'));
+	// const { keyHeaderText, valueHeaderText } = this.getLocalizedStrings();
+
+	// keyHeader.textContent = keyHeaderText;
+	// valueHeader.textContent = valueHeaderText;
+
+	// return header;
+	// }
+
+	protected renderItem(item: IBoolObjectDataItem): HTMLElement {
+		const rowElement = $('.setting-list-row');
+		rowElement.classList.add('setting-list-object-row');
+
+		const keyElement = DOM.append(rowElement, $('.setting-list-object-key'));
+		const valueElement = DOM.append(rowElement, $('.setting-list-object-value'));
+
+		keyElement.textContent = item.key;
+		valueElement.textContent = item.value.toString();
+
+		return rowElement;
+	}
+
+	protected renderEdit(item: IBoolObjectDataItem, idx: number): HTMLElement {
+		const rowElement = $('.setting-list-edit-row.setting-list-object-row');
+
+		const changedItem = { ...item };
+		// const onValueChange = (value: ObjectValue) => {
+		// 	changedItem.value = value;
+		// };
+
+		// let keyWidget: ObjectWidget | undefined;
+		// let keyElement: HTMLElement;
+
+		// 	keyElement = $('.setting-list-object-key');
+		// 	keyElement.textContent = item.key.data;
+
+		// let valueWidget: ObjectWidget;
+		// const valueContainer = $('.setting-list-object-value-container');
+		const { element } = this.renderEditWidget(changedItem.value);
+		rowElement.appendChild(element);
+
+		// const renderLatestValue = () => {
+		// 	const { widget, element } = this.renderEditWidget(changedItem.value, {
+		// 		idx,
+		// 		isKey: false,
+		// 		originalItem: item,
+		// 		changedItem,
+		// 		update: onValueChange,
+		// 	});
+
+		// 	valueWidget = widget;
+
+		// 	DOM.clearNode(valueContainer);
+		// 	valueContainer.append(element);
+		// };
+
+		// renderLatestValue();
+
+		// rowElement.append(keyElement, valueContainer);
+
+		// this.listDisposables.add(
+		// 	disposableTimeout(() => {
+		// 		const widget = keyWidget ?? valueWidget;
+
+		// 		widget.focus();
+
+		// 		if (widget instanceof InputBox) {
+		// 			widget.select();
+		// 		}
+		// 	})
+		// );
+
+		return rowElement;
+	}
+
+	private renderEditWidget(
+		value: boolean,
+		// { isKey, originalItem, update }: IObjectRenderEditWidgetOptions,
+	) {
+		const checkbox = new Checkbox({
+			icon: Codicon.check,
+			actionClassName: 'setting-value-checkbox',
+			isChecked: value,
+			title: '',
+			inputActiveOptionBorder: undefined
+		});
+
+		// const originalKeyOrValue = isKey ? originalItem.key : originalItem.value;
+		// this.listDisposables.add(
+		// 	checkbox.onChange((checked) =>
+		// 		update(
+		// 			{ ...originalKeyOrValue, data: checked, type: 'boolean' }
+		// 		)
+		// 	)
+		// );
+
+		const wrapper = $('.setting-list-object-input');
+		// wrapper.classList.add(
+		// 	isKey ? 'setting-list-object-input-key' : 'setting-list-object-input-value',
+		// );
+		wrapper.appendChild(checkbox.domNode);
+
+		return { widget: checkbox, element: wrapper };
+	}
+
+	protected getLocalizedRowTitle(item: IBoolObjectDataItem): string {
+		return localize('objectPairHintLabel', "The property `{0}` is set to `{1}`.", item.key, item.value);
 	}
 
 	protected getLocalizedStrings() {
