@@ -205,6 +205,10 @@ export class ListSettingListModel<TDataItem extends object> {
 		return items;
 	}
 
+	get rendersEditOnly(): boolean {
+		return this._editOnly;
+	}
+
 	constructor(newItem: TDataItem) {
 		this._newDataItem = newItem;
 	}
@@ -388,7 +392,9 @@ export abstract class AbstractListSettingWidget<TDataItem extends object> extend
 			targetIndex: idx,
 		});
 
-		this.renderList();
+		if (!this.model.rendersEditOnly) {
+			this.renderList();
+		}
 	}
 
 	private renderDataOrEditItem(item: IListViewItem<TDataItem>, idx: number, listFocused: boolean): HTMLElement {
@@ -415,7 +421,7 @@ export abstract class AbstractListSettingWidget<TDataItem extends object> extend
 		rowElement.title = this.getLocalizedRowTitle(item);
 		rowElement.setAttribute('aria-label', rowElement.title);
 
-		if (item.selected && listFocused) {
+		if (!this.model.rendersEditOnly && item.selected && listFocused) {
 			this.listDisposables.add(disposableTimeout(() => rowElement.focus()));
 		}
 
@@ -1230,109 +1236,64 @@ export class BoolObjectSettingWidget extends AbstractListSettingWidget<IBoolObje
 		return actions;
 	}
 
-	// protected override renderHeader() {
-	// const header = $('.setting-list-row-header');
-	// const keyHeader = DOM.append(header, $('.setting-list-object-key'));
-	// const valueHeader = DOM.append(header, $('.setting-list-object-value'));
-	// const { keyHeaderText, valueHeaderText } = this.getLocalizedStrings();
+	protected override isAddButtonVisible(): boolean {
+		return false;
+	}
 
-	// keyHeader.textContent = keyHeaderText;
-	// valueHeader.textContent = valueHeaderText;
-
-	// return header;
-	// }
+	protected override renderHeader() {
+		return undefined;
+	}
 
 	protected renderItem(item: IBoolObjectDataItem): HTMLElement {
+		// return empty object, since we always render in edit mode
 		const rowElement = $('.setting-list-row');
 		rowElement.classList.add('setting-list-object-row');
-
-		const keyElement = DOM.append(rowElement, $('.setting-list-object-key'));
-		const valueElement = DOM.append(rowElement, $('.setting-list-object-value'));
-
-		keyElement.textContent = item.key;
-		valueElement.textContent = item.value.toString();
-
 		return rowElement;
 	}
 
 	protected renderEdit(item: IBoolObjectDataItem, idx: number): HTMLElement {
-		const rowElement = $('.setting-list-edit-row.setting-list-object-row');
+		const rowElement = $('.setting-list-edit-row.setting-list-object-row.setting-item-bool');
 
 		const changedItem = { ...item };
-		// const onValueChange = (value: ObjectValue) => {
-		// 	changedItem.value = value;
-		// };
-
-		// let keyWidget: ObjectWidget | undefined;
-		// let keyElement: HTMLElement;
-
-		// 	keyElement = $('.setting-list-object-key');
-		// 	keyElement.textContent = item.key.data;
-
-		// let valueWidget: ObjectWidget;
-		// const valueContainer = $('.setting-list-object-value-container');
-		const { element } = this.renderEditWidget(changedItem.value);
+		const onValueChange = (newValue: boolean) => {
+			changedItem.value = newValue;
+			this.handleItemChange(item, changedItem, idx);
+			disposableTimeout(() => {
+				widget.focus();
+			}, 200);
+			// widget.focus();
+		};
+		const { element, widget } = this.renderEditWidget(changedItem.value, onValueChange);
 		rowElement.appendChild(element);
 
-		// const renderLatestValue = () => {
-		// 	const { widget, element } = this.renderEditWidget(changedItem.value, {
-		// 		idx,
-		// 		isKey: false,
-		// 		originalItem: item,
-		// 		changedItem,
-		// 		update: onValueChange,
-		// 	});
-
-		// 	valueWidget = widget;
-
-		// 	DOM.clearNode(valueContainer);
-		// 	valueContainer.append(element);
-		// };
-
-		// renderLatestValue();
-
-		// rowElement.append(keyElement, valueContainer);
-
-		// this.listDisposables.add(
-		// 	disposableTimeout(() => {
-		// 		const widget = keyWidget ?? valueWidget;
-
-		// 		widget.focus();
-
-		// 		if (widget instanceof InputBox) {
-		// 			widget.select();
-		// 		}
-		// 	})
-		// );
+		const valueElement = DOM.append(rowElement, $('.setting-list-object-value'));
+		valueElement.textContent = changedItem.key;
+		this._register(DOM.addDisposableListener(valueElement, DOM.EventType.CLICK, e => {
+			widget.checked = !widget.checked;
+		}));
 
 		return rowElement;
 	}
 
 	private renderEditWidget(
 		value: boolean,
-		// { isKey, originalItem, update }: IObjectRenderEditWidgetOptions,
+		onValueChange: (newValue: boolean) => void
 	) {
 		const checkbox = new Checkbox({
 			icon: Codicon.check,
 			actionClassName: 'setting-value-checkbox',
 			isChecked: value,
-			title: '',
-			inputActiveOptionBorder: undefined
+			title: ''
 		});
 
-		// const originalKeyOrValue = isKey ? originalItem.key : originalItem.value;
-		// this.listDisposables.add(
-		// 	checkbox.onChange((checked) =>
-		// 		update(
-		// 			{ ...originalKeyOrValue, data: checked, type: 'boolean' }
-		// 		)
-		// 	)
-		// );
+		this.listDisposables.add(checkbox);
+		this.listDisposables.add(checkbox.onChange(_ => {
+			onValueChange(checkbox.checked);
+		}));
 
 		const wrapper = $('.setting-list-object-input');
-		// wrapper.classList.add(
-		// 	isKey ? 'setting-list-object-input-key' : 'setting-list-object-input-value',
-		// );
+		wrapper.classList.add('setting-list-object-input-key-checkbox');
+		checkbox.domNode.classList.add('setting-value-checkbox');
 		wrapper.appendChild(checkbox.domNode);
 
 		return { widget: checkbox, element: wrapper };

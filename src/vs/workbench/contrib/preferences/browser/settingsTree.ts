@@ -1774,6 +1774,7 @@ export class SettingTreeRenderers {
 			this._instantiationService.createInstance(SettingExcludeRenderer, this.settingActions, actionFactory),
 			this._instantiationService.createInstance(SettingEnumRenderer, this.settingActions, actionFactory),
 			this._instantiationService.createInstance(SettingObjectRenderer, this.settingActions, actionFactory),
+			this._instantiationService.createInstance(SettingBoolObjectRenderer, this.settingActions, actionFactory),
 			this._instantiationService.createInstance(SettingUntrustedRenderer, this.settingActions, actionFactory),
 		];
 
